@@ -1,22 +1,19 @@
 import os
 import asyncio
 import json
+import requests as req
 from flask import Flask, request, jsonify
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-import redis
 
 app = Flask(__name__)
 
 # Initialize bot application
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
-# Initialize Redis connection for Upstash
+# Initialize Upstash Redis REST API
 UPSTASH_URL = os.environ.get("UPSTASH_REDIS_REST_URL")
 UPSTASH_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN")
-
-# Use REST API for Upstash (no redis package needed)
-import requests as req
 
 def redis_get(key):
     """Get value from Upstash Redis"""
@@ -39,7 +36,7 @@ def redis_set(key, value):
         response = req.post(
             f"{UPSTASH_URL}/set/{key}",
             headers={"Authorization": f"Bearer {UPSTASH_TOKEN}"},
-            json=value if isinstance(value, (dict, list)) else {"value": value}
+            data=value
         )
         return response.status_code == 200
     except Exception as e:
@@ -49,13 +46,13 @@ def redis_set(key, value):
 def get_jar():
     """Get jar data from Redis"""
     try:
-        data = redis_client.get("swear_jar")
+        data = redis_get("swear_jar")
         if data:
             return json.loads(data)
         else:
             # Initialize if doesn't exist
             initial = {"Oumaima": 0, "Maarten": 0}
-            redis_client.set("swear_jar", json.dumps(initial))
+            redis_set("swear_jar", json.dumps(initial))
             return initial
     except:
         # Fallback to default if Redis fails
@@ -64,7 +61,7 @@ def get_jar():
 def save_jar(jar):
     """Save jar data to Redis"""
     try:
-        redis_client.set("swear_jar", json.dumps(jar))
+        redis_set("swear_jar", json.dumps(jar))
     except Exception as e:
         print(f"Error saving to Redis: {e}")
 
