@@ -1,16 +1,72 @@
 import os
 import asyncio
+import json
 from flask import Flask, request, jsonify
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+import redis
 
 app = Flask(__name__)
 
 # Initialize bot application
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
-# In-memory jar (will be replaced with persistent storage)
-jar = {"Oumaima": 0, "Maarten": 0}
+# Initialize Redis connection for Upstash
+UPSTASH_URL = os.environ.get("UPSTASH_REDIS_REST_URL")
+UPSTASH_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN")
+
+# Use REST API for Upstash (no redis package needed)
+import requests as req
+
+def redis_get(key):
+    """Get value from Upstash Redis"""
+    try:
+        response = req.get(
+            f"{UPSTASH_URL}/get/{key}",
+            headers={"Authorization": f"Bearer {UPSTASH_TOKEN}"}
+        )
+        if response.status_code == 200:
+            result = response.json().get("result")
+            return result
+        return None
+    except Exception as e:
+        print(f"Redis GET error: {e}")
+        return None
+
+def redis_set(key, value):
+    """Set value in Upstash Redis"""
+    try:
+        response = req.post(
+            f"{UPSTASH_URL}/set/{key}",
+            headers={"Authorization": f"Bearer {UPSTASH_TOKEN}"},
+            json=value if isinstance(value, (dict, list)) else {"value": value}
+        )
+        return response.status_code == 200
+    except Exception as e:
+        print(f"Redis SET error: {e}")
+        return False
+
+def get_jar():
+    """Get jar data from Redis"""
+    try:
+        data = redis_client.get("swear_jar")
+        if data:
+            return json.loads(data)
+        else:
+            # Initialize if doesn't exist
+            initial = {"Oumaima": 0, "Maarten": 0}
+            redis_client.set("swear_jar", json.dumps(initial))
+            return initial
+    except:
+        # Fallback to default if Redis fails
+        return {"Oumaima": 0, "Maarten": 0}
+
+def save_jar(jar):
+    """Save jar data to Redis"""
+    try:
+        redis_client.set("swear_jar", json.dumps(jar))
+    except Exception as e:
+        print(f"Error saving to Redis: {e}")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -24,10 +80,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
+    
+    jar = get_jar()
 
     if q.data.startswith("swear_"):
         p = q.data.split("_")[1]
         jar[p] = jar.get(p, 0) + 1
+        save_jar(jar)
         await q.edit_message_text(f"{p} vloekte. Totaal: {jar[p]}")
 
     elif q.data == "status":
@@ -38,6 +97,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif q.data == "reset":
         for key in jar:
             jar[key] = 0
+        save_jar(jar)
         await q.edit_message_text("Potje gereset.")
 
 async def process_update(data):
