@@ -44,9 +44,24 @@ dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(CallbackQueryHandler(button))
 
 # Vercel serverless function handler
-def handler(request):
-    if request.method == "POST":
-        update = Update.de_json(request.get_json(force=True), bot)
+from http.server import BaseHTTPRequestHandler
+
+class handler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        content_length = int(self.headers['Content-Length'])
+        post_data = self.rfile.read(content_length)
+        update = Update.de_json(json.loads(post_data), bot)
         dispatcher.process_update(update)
-        return "ok", 200
-    return "Bot is running", 200
+        
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b'ok')
+        return
+    
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b'Bot is running')
+        return
