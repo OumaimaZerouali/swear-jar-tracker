@@ -1,10 +1,13 @@
 import os
-import json
+from flask import Flask, request, jsonify
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
 from telegram.ext import Dispatcher, CallbackQueryHandler, CommandHandler
 
+app = Flask(__name__)
+
 # Initialize bot
-bot = Bot(os.environ["BOT_TOKEN"])
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+bot = Bot(BOT_TOKEN)
 
 # In-memory jar (will be replaced with persistent storage)
 jar = {"Oumaima": 0, "Maarten": 0}
@@ -42,31 +45,16 @@ dispatcher = Dispatcher(bot, None, workers=0, use_context=True)
 dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(CallbackQueryHandler(button))
 
-def handler(event, context):
-    try:
-        # Parse the incoming request
-        if 'body' in event:
-            body = event['body']
-            if isinstance(body, str):
-                data = json.loads(body)
-            else:
-                data = body
-        else:
-            data = event
-        
-        # Process the Telegram update
-        update = Update.de_json(data, bot)
+@app.route('/api/webhook', methods=['POST', 'GET'])
+def webhook():
+    if request.method == 'POST':
+        update = Update.de_json(request.get_json(force=True), bot)
         dispatcher.process_update(update)
-        
-        return {
-            'statusCode': 200,
-            'body': json.dumps({'ok': True})
-        }
-    except Exception as e:
-        print(f"Error: {e}")
-        import traceback
-        traceback.print_exc()
-        return {
-            'statusCode': 200,
-            'body': json.dumps({'ok': True})
-        }
+        return jsonify({"ok": True})
+    else:
+        return "Bot is running!", 200
+
+# For Vercel
+def handler(event, context):
+    with app.request_context(event):
+        return app.full_dispatch_request()
