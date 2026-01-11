@@ -18,10 +18,14 @@ UPSTASH_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN")
 def redis_get(key):
     """Get value from Upstash Redis"""
     try:
+        if not UPSTASH_URL or not UPSTASH_TOKEN:
+            print("Upstash credentials not set")
+            return None
         response = req.get(
             f"{UPSTASH_URL}/get/{key}",
             headers={"Authorization": f"Bearer {UPSTASH_TOKEN}"}
         )
+        print(f"GET Response: {response.status_code}, {response.text}")
         if response.status_code == 200:
             result = response.json().get("result")
             return result
@@ -33,11 +37,15 @@ def redis_get(key):
 def redis_set(key, value):
     """Set value in Upstash Redis"""
     try:
+        if not UPSTASH_URL or not UPSTASH_TOKEN:
+            print("Upstash credentials not set")
+            return False
+        # Upstash REST API expects the command as URL path
         response = req.post(
-            f"{UPSTASH_URL}/set/{key}",
-            headers={"Authorization": f"Bearer {UPSTASH_TOKEN}"},
-            data=value
+            f"{UPSTASH_URL}/set/{key}/{value}",
+            headers={"Authorization": f"Bearer {UPSTASH_TOKEN}"}
         )
+        print(f"SET Response: {response.status_code}, {response.text}")
         return response.status_code == 200
     except Exception as e:
         print(f"Redis SET error: {e}")
