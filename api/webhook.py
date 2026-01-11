@@ -1,13 +1,13 @@
 import os
 import json
+from http.server import BaseHTTPRequestHandler
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
 from telegram.ext import Dispatcher, CallbackQueryHandler, CommandHandler
 
 # Initialize bot
 bot = Bot(os.environ["BOT_TOKEN"])
 
-# In-memory jar (Vercel is stateless, so we use environment or external storage)
-# For now, we'll use a simple in-memory dict
+# In-memory jar (will be replaced with persistent storage)
 jar = {"Oumaima": 0, "Maarten": 0}
 
 def start(update, context):
@@ -43,25 +43,32 @@ dispatcher = Dispatcher(bot, None, workers=0, use_context=True)
 dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(CallbackQueryHandler(button))
 
-# Vercel serverless function handler
-from http.server import BaseHTTPRequestHandler
-
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
-        content_length = int(self.headers['Content-Length'])
-        post_data = self.rfile.read(content_length)
-        update = Update.de_json(json.loads(post_data), bot)
-        dispatcher.process_update(update)
-        
-        self.send_response(200)
-        self.send_header('Content-type', 'text/plain')
-        self.end_headers()
-        self.wfile.write(b'ok')
-        return
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length)
+            
+            # Parse JSON
+            data = json.loads(post_data.decode('utf-8'))
+            
+            # Process update
+            update = Update.de_json(data, bot)
+            dispatcher.process_update(update)
+            
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"ok": True}).encode())
+        except Exception as e:
+            print(f"Error: {e}")
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"ok": False, "error": str(e)}).encode())
     
     def do_GET(self):
         self.send_response(200)
         self.send_header('Content-type', 'text/plain')
         self.end_headers()
         self.wfile.write(b'Bot is running')
-        return
