@@ -1,28 +1,19 @@
 import os
 import json
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
 from telegram.ext import Dispatcher, CallbackQueryHandler, CommandHandler
-from telegram import Bot
 
+# Initialize bot
 bot = Bot(os.environ["BOT_TOKEN"])
 
-# Load jar
-JAR_FILE = "/tmp/jar.json"
-
-if os.path.exists(JAR_FILE):
-    with open(JAR_FILE) as f:
-        jar = json.load(f)
-else:
-    jar = {"oumi": 0, "maarten": 0}
-
-def save():
-    with open(JAR_FILE, "w") as f:
-        json.dump(jar, f)
+# In-memory jar (Vercel is stateless, so we use environment or external storage)
+# For now, we'll use a simple in-memory dict
+jar = {"Oumaima": 0, "Maarten": 0}
 
 def start(update, context):
     keyboard = [
-        [InlineKeyboardButton("Ik vloekte", callback_data="swear_oumi")],
-        [InlineKeyboardButton("Maarten vloekte", callback_data="swear_maarten")],
+        [InlineKeyboardButton("Ik vloekte", callback_data="swear_Oumaima")],
+        [InlineKeyboardButton("Maarten vloekte", callback_data="swear_Maarten")],
         [InlineKeyboardButton("Status", callback_data="status")],
         [InlineKeyboardButton("Betaald – reset", callback_data="reset")]
     ]
@@ -34,26 +25,28 @@ def button(update, context):
 
     if q.data.startswith("swear_"):
         p = q.data.split("_")[1]
-        jar[p] += 1
-        save()
-        q.edit_message_text(f"{p.capitalize()} vloekte. Totaal: {jar[p]}")
+        jar[p] = jar.get(p, 0) + 1
+        q.edit_message_text(f"{p} vloekte. Totaal: {jar[p]}")
 
     elif q.data == "status":
         totaal = sum(jar.values()) * 0.20
-        msg = "\n".join([f"{k}: {v}" for k,v in jar.items()])
+        msg = "\n".join([f"{k}: {v}" for k, v in jar.items()])
         q.edit_message_text(f"{msg}\nTotaal: €{totaal:.2f}")
 
     elif q.data == "reset":
-        jar["oumi"] = 0
-        jar["maarten"] = 0
-        save()
+        for key in jar:
+            jar[key] = 0
         q.edit_message_text("Potje gereset.")
 
-dispatcher = Dispatcher(bot, None, workers=1, use_context=True)
+# Initialize dispatcher
+dispatcher = Dispatcher(bot, None, workers=0, use_context=True)
 dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(CallbackQueryHandler(button))
 
+# Vercel serverless function handler
 def handler(request):
-    update = Update.de_json(request.json, bot)
-    dispatcher.process_update(update)
-    return ("ok", 200)
+    if request.method == "POST":
+        update = Update.de_json(request.get_json(force=True), bot)
+        dispatcher.process_update(update)
+        return "ok", 200
+    return "Bot is running", 200
