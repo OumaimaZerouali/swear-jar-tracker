@@ -1,67 +1,59 @@
-import json
 import os
-import requests
+import json
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Dispatcher, CallbackQueryHandler, CommandHandler
+from telegram import Bot
 
-TOKEN = os.environ["BOT_TOKEN"]
-API = f"https://api.telegram.org/bot{TOKEN}"
+bot = Bot(os.environ["BOT_TOKEN"])
+
+# Load jar
 JAR_FILE = "/tmp/jar.json"
-PRICE = 0.20
 
-def load():
-    if os.path.exists(JAR_FILE):
-        return json.load(open(JAR_FILE))
-    return {"Oumaima": 0, "Maarten": 0}
+if os.path.exists(JAR_FILE):
+    with open(JAR_FILE) as f:
+        jar = json.load(f)
+else:
+    jar = {"oumi": 0, "maarten": 0}
 
-def save(data):
-    json.dump(data, open(JAR_FILE, "w"))
+def save():
+    with open(JAR_FILE, "w") as f:
+        json.dump(jar, f)
 
-def keyboard():
-    return {
-        "inline_keyboard": [
-            [{"text": "Oumaima heeft gescholden", "callback_data": "Oumaima"}],
-            [{"text": "Maarten heeft gescholden", "callback_data": "Maarten"}],
-            [{"text": "Bekijk potje", "callback_data": "status"}],
-            [{"text": "Betaald / Reset potje", "callback_data": "reset"}],
-        ]
-    }
+def start(update, context):
+    keyboard = [
+        [InlineKeyboardButton("Ik vloekte", callback_data="swear_oumi")],
+        [InlineKeyboardButton("Maarten vloekte", callback_data="swear_maarten")],
+        [InlineKeyboardButton("Status", callback_data="status")],
+        [InlineKeyboardButton("Betaald – reset", callback_data="reset")]
+    ]
+    update.message.reply_text("💰 Scheldpotje", reply_markup=InlineKeyboardMarkup(keyboard))
 
-def send(chat_id, text, reply_markup=None):
-    requests.post(API + "/sendMessage", json={
-        "chat_id": chat_id,
-        "text": text,
-        "reply_markup": reply_markup
-    })
+def button(update, context):
+    q = update.callback_query
+    q.answer()
 
-def edit(chat_id, msg_id, text):
-    requests.post(API + "/editMessageText", json={
-        "chat_id": chat_id,
-        "message_id": msg_id,
-        "text": text,
-        "reply_markup": keyboard()
-    })
+    if q.data.startswith("swear_"):
+        p = q.data.split("_")[1]
+        jar[p] += 1
+        save()
+        q.edit_message_text(f"{p.capitalize()} vloekte. Totaal: {jar[p]}")
 
-def handler(req):
-    update = json.loads(req.get_data())
-    jar = load()
+    elif q.data == "status":
+        totaal = sum(jar.values()) * 0.20
+        msg = "\n".join([f"{k}: {v}" for k,v in jar.items()])
+        q.edit_message_text(f"{msg}\nTotaal: €{totaal:.2f}")
 
-    if "message" in update:
-        chat = update["message"]["chat"]["id"]
-        send(chat, "Welkom bij het scheldpotje", keyboard())
-        return "ok"
+    elif q.data == "reset":
+        jar["oumi"] = 0
+        jar["maarten"] = 0
+        save()
+        q.edit_message_text("Potje gereset.")
 
-    cb = update["callback_query"]
-    chat = cb["message"]["chat"]["id"]
-    msg = cb["message"]["message_id"]
-    data = cb["data"]
+dispatcher = Dispatcher(bot, None, workers=1, use_context=True)
+dispatcher.add_handler(CommandHandler("start", start))
+dispatcher.add_handler(CallbackQueryHandler(button))
 
-    if data in jar:
-        jar[data] += 1
-    elif data == "reset":
-        jar = {"Oumaima": 0, "Maarten": 0}
-
-    save(jar)
-    total = sum(jar.values()) * PRICE
-
-    text = f"Oumaima: {jar['Oumaima']}\nMaarten: {jar['Maarten']}\n\n💰 €{total:.2f}"
-    edit(chat, msg, text)
-    return "ok"
+def handler(request):
+    update = Update.de_json(request.json, bot)
+    dispatcher.process_update(update)
+    return ("ok", 200)
