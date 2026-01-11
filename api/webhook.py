@@ -1,6 +1,5 @@
 import os
 import json
-from http.server import BaseHTTPRequestHandler
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
 from telegram.ext import Dispatcher, CallbackQueryHandler, CommandHandler
 
@@ -43,32 +42,31 @@ dispatcher = Dispatcher(bot, None, workers=0, use_context=True)
 dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(CallbackQueryHandler(button))
 
-class handler(BaseHTTPRequestHandler):
-    def do_POST(self):
-        try:
-            content_length = int(self.headers.get('Content-Length', 0))
-            post_data = self.rfile.read(content_length)
-            
-            # Parse JSON
-            data = json.loads(post_data.decode('utf-8'))
-            
-            # Process update
-            update = Update.de_json(data, bot)
-            dispatcher.process_update(update)
-            
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps({"ok": True}).encode())
-        except Exception as e:
-            print(f"Error: {e}")
-            self.send_response(500)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps({"ok": False, "error": str(e)}).encode())
-    
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header('Content-type', 'text/plain')
-        self.end_headers()
-        self.wfile.write(b'Bot is running')
+def handler(event, context):
+    try:
+        # Parse the incoming request
+        if 'body' in event:
+            body = event['body']
+            if isinstance(body, str):
+                data = json.loads(body)
+            else:
+                data = body
+        else:
+            data = event
+        
+        # Process the Telegram update
+        update = Update.de_json(data, bot)
+        dispatcher.process_update(update)
+        
+        return {
+            'statusCode': 200,
+            'body': json.dumps({'ok': True})
+        }
+    except Exception as e:
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            'statusCode': 200,
+            'body': json.dumps({'ok': True})
+        }
