@@ -86,24 +86,45 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
     
+    print("Button pressed:", q.data)
     jar = get_jar()
+    print("Current jar:", jar)
+    
+    # Create keyboard for all responses
+    keyboard = [
+        [InlineKeyboardButton("Ik vloekte", callback_data="swear_Oumaima")],
+        [InlineKeyboardButton("Maarten vloekte", callback_data="swear_Maarten")],
+        [InlineKeyboardButton("Status", callback_data="status")],
+        [InlineKeyboardButton("Betaald – reset", callback_data="reset")]
+    ]
 
     if q.data.startswith("swear_"):
         p = q.data.split("_")[1]
         jar[p] = jar.get(p, 0) + 1
+        print(f"Incrementing {p} to {jar[p]}")
         save_jar(jar)
-        await q.edit_message_text(f"{p} vloekte. Totaal: {jar[p]}")
+        print("After save, reading back:", get_jar())
+        await q.edit_message_text(
+            f"{p} vloekte. Totaal: {jar[p]}\n\n💰 Scheldpotje", 
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
     elif q.data == "status":
         totaal = sum(jar.values()) * 0.20
         msg = "\n".join([f"{k}: {v}" for k, v in jar.items()])
-        await q.edit_message_text(f"{msg}\nTotaal: €{totaal:.2f}")
+        await q.edit_message_text(
+            f"{msg}\nTotaal: €{totaal:.2f}\n\n💰 Scheldpotje",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
     elif q.data == "reset":
         for key in jar:
             jar[key] = 0
         save_jar(jar)
-        await q.edit_message_text("Potje gereset.")
+        await q.edit_message_text(
+            "Potje gereset.\n\n💰 Scheldpotje",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
 async def process_update(data):
     application = Application.builder().token(BOT_TOKEN).build()
